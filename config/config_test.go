@@ -67,12 +67,17 @@ func (s *ConfigSuite) TestMarshal(c *C) {
 [pack]
 	window = 20
 [remote "alt"]
-	url = git@github.com:mcuadros/go-git.git
-	url = git@github.com:src-d/go-git.git
+	url = https://github.com/mcuadros/go-git.git
+	url = https://github.com/src-d/go-git.git
+	pushurl = https://github.com/mcuadros/go-git2.git
+	pushurl = https://github.com/src-d/go-git2.git
 	fetch = +refs/heads/*:refs/remotes/origin/*
 	fetch = +refs/pull/*:refs/remotes/origin/pull/*
+	push = +refs/heads/*:refs/remotes/origin/*
+	push = +refs/pull/*:refs/remotes/origin/pull/*
 [remote "origin"]
-	url = git@github.com:mcuadros/go-git.git
+	url = https://github.com/mcuadros/go-git.git
+	pushurl = https://github.com/mcuadros/go-git2.git
 [remote "win-local"]
 	url = "X:\\Git\\"
 [submodule "qux"]
@@ -88,13 +93,16 @@ func (s *ConfigSuite) TestMarshal(c *C) {
 	cfg.Pack.Window = 20
 	cfg.Remotes["origin"] = &RemoteConfig{
 		Name: "origin",
-		URLs: []string{"git@github.com:mcuadros/go-git.git"},
+		URLs: []string{"https://github.com/mcuadros/go-git.git"},
+		PushURLs: []string{"https://github.com/mcuadros/go-git2.git"},
 	}
 
 	cfg.Remotes["alt"] = &RemoteConfig{
 		Name:  "alt",
-		URLs:  []string{"git@github.com:mcuadros/go-git.git", "git@github.com:src-d/go-git.git"},
+		URLs:  []string{"https://github.com/mcuadros/go-git.git", "https://github.com/src-d/go-git.git"},
+		PushURLs:  []string{"https://github.com/mcuadros/go-git2.git", "https://github.com/src-d/go-git2.git"},
 		Fetch: []RefSpec{"+refs/heads/*:refs/remotes/origin/*", "+refs/pull/*:refs/remotes/origin/pull/*"},
+		Push: []RefSpec{"+refs/heads/*:refs/remotes/origin/*", "+refs/pull/*:refs/remotes/origin/pull/*"},
 	}
 
 	cfg.Remotes["win-local"] = &RemoteConfig{
@@ -127,8 +135,10 @@ func (s *ConfigSuite) TestUnmarshalMarshal(c *C) {
 [pack]
 	window = 20
 [remote "origin"]
-	url = git@github.com:mcuadros/go-git.git
+	url = https://github.com/mcuadros/go-git.git
 	fetch = +refs/heads/*:refs/remotes/origin/*
+	pushurl = https://github.com/mcuadros/go-git.git
+	push = +refs/heads/*:refs/remotes/origin/*
 	mirror = true
 [remote "win-local"]
 	url = "X:\\Git\\"

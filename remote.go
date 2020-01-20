@@ -63,6 +63,9 @@ func (r *Remote) String() string {
 		fetch = r.c.URLs[0]
 		push = r.c.URLs[0]
 	}
+	if len(r.c.PushURLs) > 0 {
+		push = r.c.PushURLs[0]
+	}
 
 	return fmt.Sprintf("%s\t%s (fetch)\n%[1]s\t%[3]s (push)", r.c.Name, fetch, push)
 }

@@ -114,6 +114,8 @@ const (
 	coreSection      = "core"
 	packSection      = "pack"
 	fetchKey         = "fetch"
+	pushKey          = "push"
+	pushURLKey       = "pushurl"
 	urlKey           = "url"
 	bareKey          = "bare"
 	worktreeKey      = "worktree"
@@ -325,9 +327,12 @@ type RemoteConfig struct {
 	// URLs the URLs of a remote repository. It must be non-empty. Fetch will
 	// always use the first URL, while push will use all of them.
 	URLs []string
+	// PushURLs the URLs of a remote repository used explicitly for pushes.
+	PushURLs []string
 	// Fetch the default set of "refspec" for fetch operation
 	Fetch []RefSpec
-
+	// Push ... TODO
+	Push []RefSpec
 	// raw representation of the subsection, filled by marshal or unmarshal are
 	// called
 	raw *format.Subsection
@@ -360,18 +365,32 @@ func (c *RemoteConfig) unmarshal(s *format.Subsection) error {
 	c.raw = s
 
 	fetch := []RefSpec{}
-	for _, f := range c.raw.Options.GetAll(fetchKey) {
-		rs := RefSpec(f)
-		if err := rs.Validate(); err != nil {
-			return err
-		}
+	buildRefSpecSlice := func(items []string) (values []RefSpec, err error) {
+		for _, f := range items {
+			rs := RefSpec(f)
+			if err = rs.Validate(); err != nil {
+				return
+			}
 
-		fetch = append(fetch, rs)
+			values = append(values, rs)
+		}
+		return
+	}
+	fetch, err := buildRefSpecSlice(c.raw.Options.GetAll(fetchKey))
+	if err != nil {
+		return err
+	}
+	push, err := buildRefSpecSlice(c.raw.Options.GetAll(pushKey))
+	if err != nil {
+		return err
 	}
 
 	c.Name = c.raw.Name
 	c.URLs = append([]string(nil), c.raw.Options.GetAll(urlKey)...)
 	c.Fetch = fetch
+
+	c.Push = push
+	c.PushURLs = append([]string(nil), c.raw.Options.GetAll(pushURLKey)...)
 
 	return nil
 }
@@ -388,6 +407,12 @@ func (c *RemoteConfig) marshal() *format.Subsection {
 		c.raw.SetOption(urlKey, c.URLs...)
 	}
 
+	if len(c.PushURLs) == 0 {
+		c.raw.RemoveOption(pushURLKey)
+	} else {
+		c.raw.SetOption(pushURLKey, c.PushURLs...)
+	}
+
 	if len(c.Fetch) == 0 {
 		c.raw.RemoveOption(fetchKey)
 	} else {
@@ -397,6 +422,17 @@ func (c *RemoteConfig) marshal() *format.Subsection {
 		}
 
 		c.raw.SetOption(fetchKey, values...)
+	}
+
+	if len(c.Push) == 0 {
+		c.raw.RemoveOption(pushKey)
+	} else {
+		var values []string
+		for _, rs := range c.Push {
+			values = append(values, rs.String())
+		}
+
+		c.raw.SetOption(pushKey, values...)
 	}
 
 	return c.raw
