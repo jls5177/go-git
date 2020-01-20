@@ -5,8 +5,10 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"strconv"
+	"strings"
 
 	"gopkg.in/src-d/go-git.v4/internal/url"
 	format "gopkg.in/src-d/go-git.v4/plumbing/format/config"
@@ -62,6 +64,8 @@ type Config struct {
 	// Branches list of branches, the key is the branch name and should
 	// equal Branch.Name
 	Branches map[string]*Branch
+	// Https list of ....TODO
+	Https map[string]*Http
 	// Raw contains the raw information of a config file. The main goal is
 	// preserve the parsed information from the original format, to avoid
 	// dropping unsupported fields.
@@ -73,6 +77,7 @@ func NewConfig() *Config {
 	config := &Config{
 		Remotes:    make(map[string]*RemoteConfig),
 		Submodules: make(map[string]*Submodule),
+		Https:      make(map[string]*Http),
 		Branches:   make(map[string]*Branch),
 		Raw:        format.New(),
 	}
@@ -104,6 +109,16 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	for name, b := range c.Https {
+		if b.Name != name {
+			return ErrInvalid
+		}
+
+		if err := b.Validate(); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -113,6 +128,7 @@ const (
 	branchSection    = "branch"
 	coreSection      = "core"
 	packSection      = "pack"
+	httpSection      = "http"
 	fetchKey         = "fetch"
 	pushKey          = "push"
 	pushURLKey       = "pushurl"
@@ -123,6 +139,10 @@ const (
 	windowKey        = "window"
 	mergeKey         = "merge"
 	rebaseKey        = "rebase"
+
+	httpSslVerifyKey = "sslVerify"
+	httpSslCAInfoKey = "sslCAInfo"
+	httpSslCAPathKey = "sslCAPath"
 
 	// DefaultPackWindow holds the number of previous objects used to
 	// generate deltas. The value 10 is the same used by git command.
@@ -146,6 +166,10 @@ func (c *Config) Unmarshal(b []byte) error {
 	unmarshalSubmodules(c.Raw, c.Submodules)
 
 	if err := c.unmarshalBranches(); err != nil {
+		return err
+	}
+
+	if err := c.unmarshalHttp(); err != nil {
 		return err
 	}
 
@@ -219,6 +243,16 @@ func (c *Config) unmarshalBranches() error {
 	return nil
 }
 
+func (c *Config) unmarshalHttp() error {
+	bs := c.Raw.Section(httpSection)
+	for _, sub := range bs.Subsections {
+		b := &Http{}
+		b.unmarshal(sub)
+		c.Https[b.Name] = b
+	}
+	return nil
+}
+
 // Marshal returns Config encoded as a git-config file.
 func (c *Config) Marshal() ([]byte, error) {
 	c.marshalCore()
@@ -226,6 +260,7 @@ func (c *Config) Marshal() ([]byte, error) {
 	c.marshalRemotes()
 	c.marshalSubmodules()
 	c.marshalBranches()
+	c.marshalHttps()
 
 	buf := bytes.NewBuffer(nil)
 	if err := format.NewEncoder(buf).Encode(c.Raw); err != nil {
@@ -314,6 +349,34 @@ func (c *Config) marshalBranches() {
 	for _, name := range branchNames {
 		if !added[name] {
 			newSubsections = append(newSubsections, c.Branches[name].marshal())
+		}
+	}
+
+	s.Subsections = newSubsections
+}
+
+
+func (c *Config) marshalHttps() {
+	s := c.Raw.Section(httpSection)
+	newSubsections := make(format.Subsections, 0, len(c.Https))
+	added := make(map[string]bool)
+	for _, subsection := range s.Subsections {
+		if http, ok := c.Https[subsection.Name]; ok {
+			newSubsections = append(newSubsections, http.marshal())
+			added[subsection.Name] = true
+		}
+	}
+
+	httpNames := make([]string, 0, len(c.Https))
+	for name := range c.Https {
+		httpNames = append(httpNames, name)
+	}
+
+	sort.Strings(httpNames)
+
+	for _, name := range httpNames {
+		if !added[name] {
+			newSubsections = append(newSubsections, c.Https[name].marshal())
 		}
 	}
 
@@ -440,4 +503,80 @@ func (c *RemoteConfig) marshal() *format.Subsection {
 
 func (c *RemoteConfig) IsFirstURLLocal() bool {
 	return url.IsLocalEndpoint(c.URLs[0])
+}
+
+// Http defines a submodule.
+type Http struct {
+	// Name module name
+	Name string
+
+	// SslVerify indicates whether to verify the SSL certificate when fetching or pushing over HTTPS
+	SslVerify bool
+
+	// SslCAInfo defines a file containing the certificates to verify the peer with when fetching or pushing over HTTPS.
+	SslCAInfo string
+
+	// SslCAPath defines a path containing files with the CA certificates to verify the peer with when fetching or pushing over HTTPS.
+	SslCAPath string
+
+	// raw representation of the subsection, filled by marshal or unmarshal are
+	// called.
+	raw *format.Subsection
+}
+
+// Validate validates the fields and sets the default values.
+func (m *Http) Validate() error {
+	// exists returns true if the file exists, false otherwise
+	exists := func(infile string) bool {
+		if _, err := os.Stat(infile); os.IsNotExist(err) {
+			return false
+		}
+		return true
+	}
+
+	if m.SslCAInfo != "" && !exists(m.SslCAInfo) {
+		return ErrModuleEmptyPath
+	}
+
+	if m.SslCAPath != "" && !exists(m.SslCAPath) {
+		return ErrModuleEmptyURL
+	}
+
+	return nil
+}
+
+func (m *Http) unmarshal(s *format.Subsection) {
+	m.raw = s
+
+	m.Name = m.raw.Name
+	m.SslCAInfo = m.raw.Option(httpSslCAInfoKey)
+	m.SslCAPath = m.raw.Option(httpSslCAPathKey)
+
+	switch strings.ToLower(m.raw.Options.Get(httpSslVerifyKey)) {
+	case "true", "":
+		m.SslVerify = true
+	default:
+		m.SslVerify = false
+	}
+}
+
+func (m *Http) marshal() *format.Subsection {
+	if m.raw == nil {
+		m.raw = &format.Subsection{}
+	}
+
+	m.raw.Name = m.Name
+	//if m.raw.Name == "" {
+	//	m.raw.Name = m.Path
+	//}
+
+	if m.SslCAInfo != "" {
+		m.raw.SetOption(httpSslCAInfoKey, m.SslCAInfo)
+	}
+	if m.SslCAPath != "" {
+		m.raw.SetOption(httpSslCAPathKey, m.SslCAPath)
+	}
+	m.raw.SetOption(httpSslVerifyKey, fmt.Sprintf("%t", m.SslVerify))
+
+	return m.raw
 }

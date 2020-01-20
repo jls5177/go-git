@@ -85,6 +85,10 @@ func (s *ConfigSuite) TestMarshal(c *C) {
 [branch "master"]
 	remote = origin
 	merge = refs/heads/master
+[http "https://github.com/mcuadros/go-git.git"]
+	sslVerify = false
+[http "https://github.com/src-d/go-git2.git"]
+	sslVerify = true
 `)
 
 	cfg := NewConfig()
@@ -121,6 +125,17 @@ func (s *ConfigSuite) TestMarshal(c *C) {
 		Merge:  "refs/heads/master",
 	}
 
+	cfg.Https["https://github.com/mcuadros/go-git.git"] = &Http{
+		Name:   "https://github.com/mcuadros/go-git.git",
+		SslVerify: false,
+		raw:    nil,
+	}
+	cfg.Https["https://github.com/src-d/go-git2.git"] = &Http{
+		Name:   "https://github.com/src-d/go-git2.git",
+		SslVerify: true,
+		raw:    nil,
+	}
+
 	b, err := cfg.Marshal()
 	c.Assert(err, IsNil)
 
@@ -145,6 +160,8 @@ func (s *ConfigSuite) TestUnmarshalMarshal(c *C) {
 [branch "master"]
 	remote = origin
 	merge = refs/heads/master
+[http "https://github.com/mcuadros/go-git.git"]
+	sslVerify = false
 `)
 
 	cfg := NewConfig()
@@ -256,6 +273,7 @@ func (s *ConfigSuite) TestRemoteConfigDefaultValues(c *C) {
 
 	c.Assert(config.Remotes, HasLen, 0)
 	c.Assert(config.Branches, HasLen, 0)
+	c.Assert(config.Https, HasLen, 0)
 	c.Assert(config.Submodules, HasLen, 0)
 	c.Assert(config.Raw, NotNil)
 	c.Assert(config.Pack.Window, Equals, DefaultPackWindow)

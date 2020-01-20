@@ -41,6 +41,10 @@ var (
 	ErrTagExists = errors.New("tag already exists")
 	// ErrTagNotFound an error stating the specified tag does not exist
 	ErrTagNotFound = errors.New("tag not found")
+	// ErrHttpExists an error stating the specified http already exists
+	ErrHttpExists = errors.New("http already exists")
+	// ErrHttpNotFound an error stating the specified http does not exist
+	ErrHttpNotFound = errors.New("http not found")
 	// ErrFetching is returned when the packfile could not be downloaded
 	ErrFetching = errors.New("unable to fetch packfile")
 
@@ -570,6 +574,55 @@ func (r *Repository) DeleteBranch(name string) error {
 	}
 
 	delete(cfg.Branches, name)
+	return r.Storer.SetConfig(cfg)
+}
+
+// Http return a Http if exists
+func (r *Repository) Http(name string) (*config.Http, error) {
+	cfg, err := r.Storer.Config()
+	if err != nil {
+		return nil, err
+	}
+
+	b, ok := cfg.Https[name]
+	if !ok {
+		return nil, ErrHttpNotFound
+	}
+
+	return b, nil
+}
+
+// CreateHttp creates a new Http property
+func (r *Repository) CreateHttp(c *config.Http) error {
+	if err := c.Validate(); err != nil {
+		return err
+	}
+
+	cfg, err := r.Storer.Config()
+	if err != nil {
+		return err
+	}
+
+	if _, ok := cfg.Https[c.Name]; ok {
+		return ErrHttpExists
+	}
+
+	cfg.Https[c.Name] = c
+	return r.Storer.SetConfig(cfg)
+}
+
+// DeleteHttp delete a Http property from the repository and delete the config
+func (r *Repository) DeleteHttp(name string) error {
+	cfg, err := r.Storer.Config()
+	if err != nil {
+		return err
+	}
+
+	if _, ok := cfg.Https[name]; !ok {
+		return ErrHttpNotFound
+	}
+
+	delete(cfg.Https, name)
 	return r.Storer.SetConfig(cfg)
 }
 
